@@ -1,4 +1,4 @@
-# AirCanvas — Gesture-Based Smart Drawing System
+# Gesture-Based Smart Drawing System
 
 A **product-grade**, real-time gesture-based drawing system that lets you draw in the air using hand gestures captured by a webcam.
 
