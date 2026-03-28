@@ -1,5 +1,5 @@
 """
-AirCanvas — Drawing Engine
+Drawing Engine
 Manages strokes, canvas rendering, undo/redo, and eraser.
 """
 
@@ -113,7 +113,7 @@ class DrawingEngine:
             return True
         return False
 
-    # ── Clear ────────────────────────────────────────────────────
+    # ── Clear & Erase Objects ────────────────────────────────────
 
     def clear(self):
         """Clear all strokes and reset canvas."""
@@ -123,6 +123,79 @@ class DrawingEngine:
         self._canvas = np.zeros(
             (self._height, self._width, 4), dtype=np.uint8
         )
+
+    def erase_at_point(self, point: tuple[int, int], radius: int) -> bool:
+        """
+        Check if the given point intersects with any stroke. 
+        If so, delete that stroke entirely (object erasure).
+        Returns True if a stroke was deleted.
+        """
+        px, py = point
+        deleted = False
+
+        # Iterate backwards to erase the top-most stroke and delete one at a time
+        for i in range(len(self._strokes) - 1, -1, -1):
+            stroke = self._strokes[i]
+            if self._stroke_intersects(stroke, px, py, radius):
+                # User deleted a stroke; clear the redo stack to prevent timeline anomalies
+                del self._strokes[i]
+                self._redo_stack.clear()
+                deleted = True
+                break
+
+        if deleted:
+            self._render_canvas()
+        
+        return deleted
+
+    def _stroke_intersects(self, stroke: Stroke, px: int, py: int, radius: int) -> bool:
+        pts = stroke.points
+        if not pts:
+            return False
+
+        # 1. Fast Bounding Box Check -> reduces computation by 90%
+        r_total = radius + stroke.thickness
+        min_x = min(p[0] for p in pts) - r_total
+        max_x = max(p[0] for p in pts) + r_total
+        if not (min_x <= px <= max_x): return False
+
+        min_y = min(p[1] for p in pts) - r_total
+        max_y = max(p[1] for p in pts) + r_total
+        if not (min_y <= py <= max_y): return False
+
+        # 2. Accurate Distance Check
+        r_sq = r_total ** 2
+        
+        if len(pts) == 1:
+            dx = pts[0][0] - px
+            dy = pts[0][1] - py
+            return (dx*dx + dy*dy) <= r_sq
+
+        for j in range(len(pts) - 1):
+            x1, y1 = pts[j]
+            x2, y2 = pts[j+1]
+            
+            dx = x2 - x1
+            dy = y2 - y1
+            
+            px_dx = px - x1
+            py_dy = py - y1
+            
+            if dx == 0 and dy == 0:
+                dist_sq = px_dx*px_dx + py_dy*py_dy
+            else:
+                t = (px_dx * dx + py_dy * dy) / (dx*dx + dy*dy)
+                t = max(0, min(1, t))
+                
+                proj_x = x1 + t * dx
+                proj_y = y1 + t * dy
+                
+                dist_sq = (px - proj_x)**2 + (py - proj_y)**2
+                
+            if dist_sq <= r_sq:
+                return True
+                
+        return False
 
     # ── Rendering ────────────────────────────────────────────────
 
@@ -141,28 +214,17 @@ class DrawingEngine:
 
         pts = np.array(stroke.points, dtype=np.int32)
 
-        if stroke.is_eraser:
-            # Eraser: draw with transparent color (clear the canvas)
-            # We draw a thick line with alpha=0 to "erase"
-            cv2.polylines(
-                self._canvas,
-                [pts],
-                isClosed=False,
-                color=(0, 0, 0, 0),
-                thickness=stroke.thickness,
-                lineType=cv2.LINE_AA,
-            )
-        else:
-            # Normal stroke: draw with full alpha
-            bgr = stroke.color
-            cv2.polylines(
-                self._canvas,
-                [pts],
-                isClosed=False,
-                color=(bgr[0], bgr[1], bgr[2], 255),
-                thickness=stroke.thickness,
-                lineType=cv2.LINE_AA,
-            )
+        # Draw with full alpha for all standard lines
+        # (Legacy opacity eraser support removed)
+        bgr = stroke.color
+        cv2.polylines(
+            self._canvas,
+            [pts],
+            isClosed=False,
+            color=(bgr[0], bgr[1], bgr[2], 255),
+            thickness=stroke.thickness,
+            lineType=cv2.LINE_AA,
+        )
 
     def render(self) -> np.ndarray:
         """
@@ -181,21 +243,13 @@ class DrawingEngine:
     def _draw_stroke_on_array(self, img: np.ndarray, stroke: Stroke):
         """Draw a stroke onto an arbitrary BGRA array."""
         pts = np.array(stroke.points, dtype=np.int32)
-        if stroke.is_eraser:
-            cv2.polylines(
-                img, [pts], isClosed=False,
-                color=(0, 0, 0, 0),
-                thickness=stroke.thickness,
-                lineType=cv2.LINE_AA,
-            )
-        else:
-            bgr = stroke.color
-            cv2.polylines(
-                img, [pts], isClosed=False,
-                color=(bgr[0], bgr[1], bgr[2], 255),
-                thickness=stroke.thickness,
-                lineType=cv2.LINE_AA,
-            )
+        bgr = stroke.color
+        cv2.polylines(
+            img, [pts], isClosed=False,
+            color=(bgr[0], bgr[1], bgr[2], 255),
+            thickness=stroke.thickness,
+            lineType=cv2.LINE_AA,
+        )
 
     def composite(self, background: np.ndarray) -> np.ndarray:
         """

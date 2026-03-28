@@ -1,5 +1,5 @@
 """
-AirCanvas — Coordinate Smoothing Filters
+Coordinate Smoothing Filters
 Kalman Filter (primary) and Exponential Moving Average (fallback)
 for jitter-free fingertip tracking.
 """

@@ -1,5 +1,5 @@
 """
-AirCanvas — Unit Tests for Gesture Engine & State Manager
+Unit Tests for Gesture Engine & State Manager
 
 Tests the pure-logic modules that don't require a camera.
 Uses synthetic landmark data to verify gesture classification

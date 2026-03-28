@@ -1,5 +1,5 @@
 """
-AirCanvas — Main Application
+Main Application
 Real-time gesture-based drawing system.
 
 Pipeline: Camera → HandTracker → GestureEngine → StateManager
@@ -37,7 +37,7 @@ from core.export_manager import ExportManager
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="AirCanvas — Gesture-Based Smart Drawing System"
+        description="Gesture-Based Smart Drawing System"
     )
     parser.add_argument(
         "--source", type=str, default=None,
@@ -58,7 +58,7 @@ def parse_args():
     return parser.parse_args()
 
 
-class AirCanvas:
+class App:
     """
     Main application class.
     Orchestrates the entire pipeline from camera capture to display.
@@ -96,6 +96,13 @@ class AirCanvas:
         self._fist_frames = 0
         self._ok_frames = 0
 
+        # ── Toolbar interaction state ─────────────────────────
+        self._hovered_swatch = -1
+        self._color_cooldown = 0
+        self._hovered_button = None
+        self._size_cooldown = 0
+        self._action_cooldown = 0
+
         # ── Previous tracking state (for stroke lifecycle) ───
         self._was_drawing = False
         self._was_erasing = False
@@ -128,8 +135,8 @@ class AirCanvas:
             path = self._export.start_recording(actual_w, actual_h)
             self._show_notification(f"Recording: {path}", (0, 255, 100))
 
-        print(f"[AirCanvas] Started — {actual_w}x{actual_h}")
-        print("[AirCanvas] Press Q or ESC to quit")
+        print(f"[App] Started — {actual_w}x{actual_h}")
+        print("[App] Press Q or ESC to quit")
 
         try:
             while True:
@@ -149,7 +156,7 @@ class AirCanvas:
                 self._export.write_frame(display)
 
                 # Show result
-                cv2.imshow("AirCanvas", display)
+                cv2.imshow("App", display)
 
                 # Handle keyboard input
                 if self._handle_keyboard(cv2.waitKey(1) & 0xFF):
@@ -176,6 +183,14 @@ class AirCanvas:
         8. UI rendering
         """
         t0 = time.perf_counter()
+
+        # ── Toolbar cooldown decrements ───────────────────────
+        if self._color_cooldown > 0:
+            self._color_cooldown -= 1
+        if self._size_cooldown > 0:
+            self._size_cooldown -= 1
+        if self._action_cooldown > 0:
+            self._action_cooldown -= 1
 
         # ── 1. Hand tracking ──────────────────────────────────
         hands = self._tracker.process(frame, self._frame_width, self._frame_height)
@@ -220,7 +235,7 @@ class AirCanvas:
         else:
             self._ok_frames = 0
 
-        # ── 5–6. Drawing logic ────────────────────────────────
+        # ── 5–6. Drawing logic (with toolbar interaction) ─────
         if pixel_landmarks:
             # Get the index fingertip position
             raw_tip = pixel_landmarks[settings.INDEX_TIP]
@@ -228,9 +243,97 @@ class AirCanvas:
             # Smooth the position
             smooth_tip = self._smoother.update(raw_tip)
 
-            if mode == AppMode.DRAWING:
+            # ── Toolbar hover detection ───────────────────────
+            in_toolbar = smooth_tip[1] < settings.HUD_HEIGHT + settings.TOOLBAR_HEIGHT + 15
+            self._hovered_swatch = -1
+            self._hovered_button = None
+
+            if in_toolbar:
+                # End any active stroke when entering toolbar
+                if self._was_drawing or self._was_erasing:
+                    self._drawing_engine.end_stroke()
+                    self._was_drawing = False
+                    self._was_erasing = False
+
+                cy = settings.HUD_HEIGHT + settings.TOOLBAR_HEIGHT // 2
+                start_x = 50
+                hit_r = settings.SWATCH_RADIUS + 14
+
+                # Check color swatches
+                for i in range(len(settings.COLOR_PALETTE)):
+                    sx = start_x + i * settings.SWATCH_SPACING
+                    if abs(smooth_tip[0] - sx) < hit_r and abs(smooth_tip[1] - cy) < hit_r:
+                        self._hovered_swatch = i
+                        if i != self._color_index and self._color_cooldown <= 0:
+                            self._color_index = i
+                            self._active_color = settings.COLOR_PALETTE[i]
+                            self._color_cooldown = settings.COLOR_SELECT_COOLDOWN
+                            self._show_notification("Color changed", self._active_color)
+                        break
+
+                # Check brush size buttons
+                last_sx = start_x + (len(settings.COLOR_PALETTE) - 1) * settings.SWATCH_SPACING
+                btn_x = last_sx + 100
+                minus_cx = btn_x - 30
+                plus_cx = btn_x + 30
+                btn_hit = settings.SIZE_BUTTON_RADIUS + 10
+
+                if abs(smooth_tip[1] - cy) < btn_hit:
+                    if abs(smooth_tip[0] - minus_cx) < btn_hit:
+                        self._hovered_button = "minus"
+                        if self._size_cooldown <= 0:
+                            self._thickness = max(self._thickness - settings.THICKNESS_STEP,
+                                                   settings.MIN_THICKNESS)
+                            self._size_cooldown = settings.SIZE_CHANGE_COOLDOWN
+                    elif abs(smooth_tip[0] - plus_cx) < btn_hit:
+                        self._hovered_button = "plus"
+                        if self._size_cooldown <= 0:
+                            self._thickness = min(self._thickness + settings.THICKNESS_STEP,
+                                                   settings.MAX_THICKNESS)
+                            self._size_cooldown = settings.SIZE_CHANGE_COOLDOWN
+                
+                # Check Action buttons (Undo, Clear, Save, Redo)
+                undo_x = plus_cx + 80
+                redo_x = undo_x + 70
+                clear_x = redo_x + 70
+                save_x = clear_x + 70
+                
+                if abs(smooth_tip[1] - cy) < 18:
+                    if abs(smooth_tip[0] - undo_x) < 32:
+                        self._hovered_button = "undo"
+                        if self._action_cooldown <= 0:
+                            if self._drawing_engine.undo():
+                                self._show_notification("Undo", (200, 200, 200))
+                            self._action_cooldown = settings.ACTION_COOLDOWN
+
+                    elif abs(smooth_tip[0] - redo_x) < 32:
+                        self._hovered_button = "redo"
+                        if self._action_cooldown <= 0:
+                            if self._drawing_engine.redo():
+                                self._show_notification("Redo", (200, 200, 200))
+                            self._action_cooldown = settings.ACTION_COOLDOWN
+
+                    elif abs(smooth_tip[0] - clear_x) < 32:
+                        self._hovered_button = "clear"
+                        if self._action_cooldown <= 0:
+                            self._drawing_engine.clear()
+                            self._was_drawing = False
+                            self._was_erasing = False
+                            self._show_notification("Canvas cleared!", (0, 200, 255))
+                            self._action_cooldown = settings.ACTION_COOLDOWN
+
+                    elif abs(smooth_tip[0] - save_x) < 32:
+                        self._hovered_button = "save"
+                        if self._action_cooldown <= 0:
+                            canvas = self._drawing_engine.get_canvas_bgr()
+                            path = self._export.save_canvas(canvas)
+                            self._show_notification("Saved!", (0, 255, 100))
+                            print(f"[App] Saved to {path}")
+                            self._action_cooldown = settings.ACTION_COOLDOWN
+
+            # ── Drawing / Erasing (only outside toolbar) ──────
+            elif mode == AppMode.DRAWING:
                 if not self._was_drawing:
-                    # Start a new stroke
                     self._drawing_engine.start_stroke(
                         smooth_tip, self._active_color, self._thickness
                     )
@@ -240,15 +343,15 @@ class AirCanvas:
                     self._drawing_engine.add_point(smooth_tip)
 
             elif mode == AppMode.ERASING:
-                if not self._was_erasing:
-                    self._drawing_engine.start_stroke(
-                        smooth_tip, (0, 0, 0), settings.ERASER_THICKNESS,
-                        is_eraser=True,
-                    )
-                    self._was_erasing = True
+                # If instantly switching from drawing to erasing without an idle gap,
+                # commit the active stroke so it enters the drawing engine's stroke list
+                if self._was_drawing:
+                    self._drawing_engine.end_stroke()
                     self._was_drawing = False
-                else:
-                    self._drawing_engine.add_point(smooth_tip)
+
+                # Continuous object erasure
+                self._drawing_engine.erase_at_point(smooth_tip, settings.ERASER_THICKNESS)
+                self._was_erasing = True
 
             else:  # IDLE
                 if self._was_drawing or self._was_erasing:
@@ -260,14 +363,26 @@ class AirCanvas:
         display = self._drawing_engine.composite(frame)
 
         # ── 8. UI rendering ───────────────────────────────────
-        if pixel_landmarks:
-            self._ui.draw_landmarks(display, pixel_landmarks, mode)
+        
+        # Draw the frosted glass background first
+        self._ui.draw_glass_panel(display)
 
+        # Draw UI elements over the glass
         self._ui.draw_hud(
             display, mode, self._active_color, self._thickness,
             self._fps, self._drawing_engine.stroke_count,
         )
-        self._ui.draw_toolbar(display, settings.COLOR_PALETTE, self._color_index)
+        self._ui.draw_toolbar(
+            display, settings.COLOR_PALETTE, self._color_index,
+            hovered_index=self._hovered_swatch,
+            hovered_button=self._hovered_button,
+            thickness=self._thickness,
+        )
+        
+        # Draw cursor (landmarks) on top of everything
+        if pixel_landmarks:
+            self._ui.draw_landmarks(display, pixel_landmarks, mode)
+
         self._ui.draw_instructions(display)
 
         # Progress indicators for hold gestures
@@ -328,7 +443,7 @@ class AirCanvas:
             canvas = self._drawing_engine.get_canvas_bgr()
             path = self._export.save_canvas(canvas)
             self._show_notification(f"Saved!", (0, 255, 100))
-            print(f"[AirCanvas] Saved to {path}")
+            print(f"[App] Saved to {path}")
 
         elif action == ActionEvent.UNDO:
             if self._drawing_engine.undo():
@@ -342,31 +457,6 @@ class AirCanvas:
         if key == ord("q") or key == 27:  # Q or ESC
             return True
 
-        if key == ord("u"):
-            if self._drawing_engine.undo():
-                self._show_notification("Undo", (200, 200, 200))
-
-        if key == ord("c"):
-            self._drawing_engine.clear()
-            self._was_drawing = False
-            self._was_erasing = False
-            self._show_notification("Canvas cleared!", (0, 200, 255))
-
-        if key == ord("s"):
-            canvas = self._drawing_engine.get_canvas_bgr()
-            path = self._export.save_canvas(canvas)
-            self._show_notification("Saved!", (0, 255, 100))
-            print(f"[AirCanvas] Saved to {path}")
-
-        if key == ord("r"):
-            if self._export.is_recording:
-                self._export.stop_recording()
-                self._show_notification("Recording stopped", (200, 200, 200))
-            else:
-                path = self._export.start_recording(self._frame_width, self._frame_height)
-                self._show_notification("Recording started", (0, 0, 255))
-                print(f"[AirCanvas] Recording to {path}")
-
         return False
 
     def _show_notification(self, text: str, color: tuple[int, int, int]):
@@ -378,7 +468,7 @@ class AirCanvas:
 
 def main():
     args = parse_args()
-    app = AirCanvas(args)
+    app = App(args)
     app.run()
 
 

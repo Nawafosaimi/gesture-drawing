@@ -1,10 +1,11 @@
 """
-AirCanvas — Hand Tracker Module
+Hand Tracker Module
 Wraps MediaPipe Hands to provide clean landmark data.
 """
 
 from dataclasses import dataclass, field
 import numpy as np
+import cv2
 import mediapipe as mp
 
 from config import settings
@@ -63,8 +64,10 @@ class HandTracker:
         Returns:
             List of HandResult (empty list if no hands detected).
         """
-        # MediaPipe expects RGB
-        rgb = frame[:, :, ::-1]  # BGR → RGB without copy overhead
+        # MediaPipe expects a contiguous RGB array.
+        # Slicing with [::-1] creates a non-contiguous array which causes the C++ backend
+        # to read garbage memory in the bottom half of the image!
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         results = self._hands.process(rgb)
 
         hands: list[HandResult] = []
@@ -81,9 +84,10 @@ class HandTracker:
                 (lm.x, lm.y, lm.z) for lm in hand_lms.landmark
             ]
 
-            # Convert to pixel coordinates (mirrored for natural interaction)
+            # Convert to pixel coordinates
+            # NOTE: frame is already flipped in main.py, so mirror=False to avoid double-flip
             pixel_landmarks = [
-                normalize_to_pixel(lm.x, lm.y, frame_width, frame_height, mirror=True)
+                normalize_to_pixel(lm.x, lm.y, frame_width, frame_height, mirror=False)
                 for lm in hand_lms.landmark
             ]
 
@@ -106,7 +110,7 @@ class HandTracker:
         Draw MediaPipe hand landmarks on a frame (for debugging).
         This method is optional — the UIRenderer draws custom landmarks.
         """
-        rgb = frame[:, :, ::-1]
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         raw_results = self._hands.process(rgb)
         if raw_results.multi_hand_landmarks:
             for hand_lms in raw_results.multi_hand_landmarks:

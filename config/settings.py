@@ -1,5 +1,5 @@
 """
-AirCanvas — Configuration & Constants
+Configuration & Constants
 Single source of truth for all tunable parameters.
 """
 
@@ -10,9 +10,9 @@ FRAME_HEIGHT = 720
 
 # ─────────────────────────── MediaPipe ────────────────────────
 MAX_HANDS = 1
-MIN_DETECTION_CONFIDENCE = 0.7
-MIN_TRACKING_CONFIDENCE = 0.7
-MODEL_COMPLEXITY = 0  # 0=fastest, 1=full
+MIN_DETECTION_CONFIDENCE = 0.5
+MIN_TRACKING_CONFIDENCE = 0.5
+MODEL_COMPLEXITY = 1  # 0=fastest, 1=full (more accurate)
 
 # ─────────────────────────── Gesture Thresholds ───────────────
 # Finger is "up" when TIP.y < PIP.y by at least this fraction of hand height
@@ -22,11 +22,11 @@ THUMB_OUT_MARGIN = 0.04
 # Pinch distance (thumb-tip to index-tip) threshold, normalized to hand size
 PINCH_THRESHOLD = 0.07
 # Debounce: gesture must persist for N consecutive frames to trigger transition
-DEBOUNCE_FRAMES = 4
+DEBOUNCE_FRAMES = 3
 # Minimum confidence for a gesture to be accepted
 MIN_GESTURE_CONFIDENCE = 0.65
 # Frames the fist must be held to trigger CLEAR
-CLEAR_HOLD_FRAMES = 45  # ~1.5s at 30 fps
+CLEAR_HOLD_FRAMES = 20  # ~0.6s at 30 fps
 # Frames the OK sign must be held to trigger SAVE
 SAVE_HOLD_FRAMES = 30   # ~1.0s at 30 fps
 
@@ -63,10 +63,16 @@ HUD_TEXT_COLOR = (220, 220, 220)
 HUD_FONT_SCALE = 0.6
 HUD_FONT_THICKNESS = 1
 
-TOOLBAR_WIDTH = 50
-TOOLBAR_BG_COLOR = (40, 40, 40)
-SWATCH_RADIUS = 14
-SWATCH_SPACING = 40
+TOOLBAR_HEIGHT = 60
+TOOLBAR_BG_COLOR = (30, 30, 30)
+SWATCH_RADIUS = 18
+SWATCH_SPACING = 48
+
+# ─────────────────────────── Toolbar Interaction ──────────────
+COLOR_SELECT_COOLDOWN = 15   # frames cooldown between color selections
+SIZE_BUTTON_RADIUS = 14
+SIZE_CHANGE_COOLDOWN = 12    # frames cooldown between size changes
+ACTION_COOLDOWN = 20         # cooldown for Undo/Clear actions
 
 LANDMARK_COLOR = (0, 255, 0)
 LANDMARK_CONNECTION_COLOR = (0, 200, 0)

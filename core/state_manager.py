@@ -1,5 +1,5 @@
 """
-AirCanvas — State Manager
+State Manager
 Finite State Machine for managing application mode transitions.
 
 Design goals:

@@ -49,7 +49,7 @@ Camera → HandTracker → GestureEngine → StateManager → DrawingEngine → 
 ```bash
 # 1. Clone the repo
 git clone https://github.com/YOUR_USERNAME/aircavas.git
-cd aircanvas
+cd app
 
 # 2. Install dependencies
 pip install -r requirements.txt

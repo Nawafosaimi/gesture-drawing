@@ -1,5 +1,5 @@
 """
-AirCanvas — Geometry Utilities
+Geometry Utilities
 Distance, angle, and landmark helper functions.
 """
 

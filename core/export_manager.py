@@ -1,5 +1,5 @@
 """
-AirCanvas — Export Manager
+Export Manager
 Handles saving canvas images and optional video recording.
 """
 

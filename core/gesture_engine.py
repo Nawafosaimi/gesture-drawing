@@ -1,5 +1,5 @@
 """
-AirCanvas — Gesture Recognition Engine
+Gesture Recognition Engine
 Classifies hand landmark data into discrete gestures using finger-state analysis.
 """
 
